@@ -1,0 +1,22 @@
+---
+title: "3 Markov Chain Monte Carlo"
+author: "Diego"
+format: 
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+editor: visual
+---
+
+\newpage
+
+```{r,include=TRUE}
+pacman::p_load(tidyverse)
+```
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch2f1
+#| fig-cap: "95% HDI for a normal distribution"
+
+```

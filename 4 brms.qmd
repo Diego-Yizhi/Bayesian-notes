@@ -1,0 +1,231 @@
+---
+title: "4 brms"
+author: "Diego"
+format: 
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+editor: visual
+---
+
+\newpage
+
+```{r,include=TRUE}
+pacman::p_load(tidyverse, patchwork, brms,here,rio, cowplot, bayesplot,tidybayes)
+```
+
+# An example
+
+The likelihood for the coin toss example as:
+
+$$
+y_1 \sim \text{Bernoulli}(\theta)
+$$
+
+The prior will be
+
+$$
+\theta \sim \text{Beta}(\alpha,\beta)
+$$
+
+## Load data
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+my_data <- import(here("data","z15N50.csv"))
+glimpse(my_data)
+```
+
+We can visualize in a bar plot.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f1
+#| fig-cap: "Results from a coin toss"
+
+my_data %>% 
+  mutate(y=y %>% as.character()) %>% 
+  ggplot(aes(x=y))+
+  geom_bar()+
+  scale_y_continuous(expand = expansion(mult=c(0,0.05)))+
+  theme_minimal_hgrid()
+```
+
+## Specify model
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+fit4.1 <- brm(data = my_data,
+              family = bernoulli(link = identity),
+              formula = y~1,
+              prior(beta(2,2),class=Intercept,lb=0,ub=1),
+              iter = 500+3334, warmup=500, chains=3,
+              seed=8, file=here("fits","fit04.01"))
+```
+
+## Initiate chains
+
+The initial values have default settings. The default initialization is to initialize the unconstrained parameters directly with values drawn uniformly from the interval $(-2,2)$. The bounds of this initialization can be changed but it is always symmetric around $0$. The value of 0 is special in that it represents the median of the initialization. An unconstrained value of 0 corresponds to different parameter values depending on the constraints declared on the parameters.
+
+For parameters bounded above and below, the initial value of $0$ on the unconstrained scale corresponds to a value at the midpoint of the constraint interval. For probability parameters, bounded below by $0$ and above by $1$, the transform is the inverse logit, so that an initial unconstrained value of 0 corresponds to a constrained value of 0.5, -2 corresponds to 0.12 and 2 to 0.88. Bounds other than $0$ and $1$ are just scaled and translated.
+
+## Generate chains
+
+By default, `brms` use 4 chains of 2,000 iterations each. The type of MCMC is Hamiltonian Monte Carlo (HMC).
+
+With each HMC chain, the first $n$ iterations are warmups, which are discarded and not used to describe the posterior.
+
+## Examine chains
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f2
+#| fig-cap: "Density and trace plot for the model parameter"
+
+plot(fit4.1)
+```
+
+Often, we will need the posterior draws in the form of a data frame. We can draw each chain as its own density.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f3
+#| fig-cap: "Density for the model parameter for each chain"
+
+draws <- as_draws_df(fit4.1)
+
+draws %>% 
+  mutate(chain = .chain) %>% 
+  mcmc_dens_overlay(pars = vars(b_Intercept))+
+  theme_minimal_hgrid()
+```
+
+If we want the autocorrelation plots
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f4
+#| fig-cap: "Autocorrelation plots for the model parameter for each chain"
+draws %>% 
+  mutate(chain = .chain) %>% 
+  mcmc_acf(pars = vars(b_Intercept), lags = 35)+
+  theme_minimal_hgrid()
+```
+
+We can get a sole $\hat{R}$ value for each parameter rather than a running vector.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+rhat(fit4.1)["b_Intercept"]
+```
+
+Also, we can make the running $\hat{R}$ plot.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f5
+#| fig-cap: "Running R plot"
+
+fit4.1_c <- as.mcmc(fit4.1)
+coda::gelman.plot(fit4.1_c[,"b_Intercept",])
+```
+
+### Plot posterior distributions
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+print(fit4.1) # estimate is the mean value
+```
+
+By default, the posterior reported as the man value. We can also get the median instead.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+posterior_summary(fit4.1, robust = T)
+```
+
+Also, the intervals default to 95%. We can use 50% intervals instead.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+print(fit4.1, prob=0.5)
+```
+
+Also, we can use `probs` argument to request specific percentile summaries.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+posterior_summary(fit4.1, probs = c(.025, .25, .75, .975))
+```
+
+With `draws` we can get the typical distributional plots.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f5
+#| fig-cap: "Posterior distribution"
+draws <- as_draws_df(fit4.1)
+
+draws %>% 
+  ggplot(aes(x=b_Intercept))+
+  geom_histogram(color="grey92", fill="grey67",
+                 size=.2)+
+  scale_y_continuous(expand = expansion(mult=c(0,0.05)))+
+  labs(title = "Theta via ggplot2::geom_histogram()",
+       x=expression(theta))+
+  theme_minimal_hgrid()+
+  theme(plot.title.position = "plot")
+```
+
+`bayesplot::mcmc_areas()` offers a way to depict the posterior densities, along with their percentile-based 50% and 95% ranges.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f6
+#| fig-cap: "Posterior distribution with 50% ranges"
+
+mcmc_areas(
+  draws, 
+  pars = vars(b_Intercept),
+  prob = 0.5,
+  prob_outer = 0.95,
+  point_est = "mean"
+) +
+  scale_y_discrete(expand = expansion(mult = c(0, 0.05))) +
+  labs(title = "Theta via bayesplot::mcmc_areas()",
+       x = expression(theta)) +
+  theme_minimal_hgrid() +
+  theme(plot.title.position = "plot")
+```
+
+`tidybayes` makes it possible to compute posterior modes and HDIs.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f7
+#| fig-cap: "Posterior distribution with modes and 95% HDI"
+
+draws %>% 
+  ggplot(aes(x=b_Intercept,y=0))+
+  stat_halfeye(point_interval = mode_hdi, .width = c(.95,.5))+
+  scale_y_continuous(NULL, breaks = NULL)+
+  labs(title = expression(theta* " via tidybayes::stat_halfeye()"),
+       x=expression(theta))+
+  theme_minimal_hgrid()
+
+draws %>% 
+  ggplot(aes(x = b_Intercept, y = 0)) +
+  stat_histinterval(point_interval = mode_hdi, .width = c(.95, .5)) +
+  scale_y_continuous(NULL, breaks = NULL) +
+  labs(title = expression(theta*" via tidybayes::stat_histinterval()"),
+       x = expression(theta)) +
+  theme_minimal_hgrid()
+```
+
+We can request different combinations of measures of central tendency and interval types.
+
+```{r,collapse=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#| label: fig-ch4f8
+#| fig-cap: "Mode and HDI summary with median and percentile-based interval summary"
+draws %>% 
+  ggplot(aes(x = b_Intercept)) +
+  stat_pointinterval(aes(y = 1), point_interval = median_qi, .width = c(.95, .5)) +
+  stat_pointinterval(aes(y = 2), point_interval = mode_hdi,  .width = c(.95, .5)) +
+  scale_y_continuous(NULL, breaks = 1:2,
+                     labels = c("median_qi", "mode_hdi")) +
+  coord_cartesian(ylim = c(0, 3)) +
+  labs(title = "Theta via tidybayes::stat_pointinterval()",
+       x = expression(theta)) +
+  theme_minimal_vgrid() +
+  theme(axis.line.y.left = element_blank(),
+        axis.text.y = element_text(hjust = 0),
+        axis.ticks.y = element_blank(),
+        plot.title.position = "plot",
+        title = element_text(size = 10.5))
+```
